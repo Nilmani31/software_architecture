@@ -1,13 +1,9 @@
 package com.example.trafficfinecollectionsystem.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.trafficfinecollectionsystem.data.models.Fine
 import com.example.trafficfinecollectionsystem.data.repository.FirestoreRepository
-import com.example.trafficfinecollectionsystem.data.repository.LocalAuthRepository
-import com.example.trafficfinecollectionsystem.data.repository.LocalFineRepository
 import com.example.trafficfinecollectionsystem.utils.FirebaseUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,13 +18,9 @@ data class FineState(
     val stats: Map<String, Any> = emptyMap()
 )
 
-class FineViewModel(application: Application) : AndroidViewModel(application) {
+class FineViewModel : ViewModel() {
     private val repository = FirestoreRepository()
-    private val localFineRepository = LocalFineRepository(application.applicationContext)
-    private val localAuthRepository = LocalAuthRepository(application.applicationContext)
-    private val officerId = FirebaseUtils.getCurrentUserId()
-        ?: localAuthRepository.getLastSession()?.uid
-        ?: ""
+    private val officerId = FirebaseUtils.getCurrentUserId() ?: ""
 
     private val _fineState = MutableStateFlow(FineState())
     val fineState: StateFlow<FineState> = _fineState
@@ -42,7 +34,7 @@ class FineViewModel(application: Application) : AndroidViewModel(application) {
         _fineState.value = _fineState.value.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            localFineRepository.getFinesByOfficer(officerId)
+            repository.getFinesIssuedByOfficer(officerId)
                 .onSuccess { fines ->
                     _fineState.value = _fineState.value.copy(
                         isLoading = false,
@@ -60,7 +52,7 @@ class FineViewModel(application: Application) : AndroidViewModel(application) {
 
     fun loadStatistics() {
         viewModelScope.launch {
-            localFineRepository.getStatistics(officerId)
+            repository.getOfficerStatistics(officerId)
                 .onSuccess { stats ->
                     _fineState.value = _fineState.value.copy(stats = stats)
                 }
@@ -74,7 +66,7 @@ class FineViewModel(application: Application) : AndroidViewModel(application) {
         _fineState.value = _fineState.value.copy(isLoading = true, error = null)
 
         viewModelScope.launch {
-            localFineRepository.saveFine(fine)
+            repository.issueFine(fine)
                 .onSuccess {
                     _fineState.value = _fineState.value.copy(
                         isLoading = false,
@@ -82,9 +74,6 @@ class FineViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     loadOfficerFines()
                     loadStatistics()
-                    launch {
-                        repository.issueFine(fine)
-                    }
                 }
                 .onFailure { e ->
                     _fineState.value = _fineState.value.copy(
@@ -101,7 +90,7 @@ class FineViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateFineStatus(fineId: String, status: String) {
         viewModelScope.launch {
-            localFineRepository.updateStatus(fineId, status)
+            repository.updateFineStatus(fineId, status)
                 .onSuccess {
                     loadOfficerFines()
                 }

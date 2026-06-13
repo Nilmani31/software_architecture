@@ -147,7 +147,10 @@ fun DashboardScreen(
             ActionButton(
                 title = "🚪 Logout",
                 description = "Sign out from your account",
-                onClick = onLogout,
+                onClick = {
+                    authViewModel.logout()
+                    onLogout()
+                },
                 backgroundColor = Color(0xFFF44336)
             )
         }
