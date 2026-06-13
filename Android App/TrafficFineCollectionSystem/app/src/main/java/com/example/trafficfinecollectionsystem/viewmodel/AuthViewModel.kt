@@ -1,14 +1,11 @@
 package com.example.trafficfinecollectionsystem.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.trafficfinecollectionsystem.data.models.Officer
 import com.example.trafficfinecollectionsystem.data.repository.FirestoreRepository
-import com.example.trafficfinecollectionsystem.data.repository.LocalAuthRepository
-import com.example.trafficfinecollectionsystem.security.JwtTokenStore
 import com.example.trafficfinecollectionsystem.utils.FirebaseUtils
-import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -22,11 +19,9 @@ data class AuthState(
     val successMessage: String? = null
 )
 
-class AuthViewModel(application: Application) : AndroidViewModel(application) {
+class AuthViewModel : ViewModel() {
     private val auth = FirebaseUtils.getFirebaseAuth()
     private val repository = FirestoreRepository()
-    private val localRepository = LocalAuthRepository(application.applicationContext)
-    private val tokenStore = JwtTokenStore(application.applicationContext)
 
     private val _authState = MutableStateFlow(AuthState())
     val authState: StateFlow<AuthState> = _authState
@@ -38,25 +33,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     fun checkLoginStatus() {
         val currentUser = auth.currentUser
         if (currentUser != null) {
-            refreshSession(currentUser)
+            loadUserProfile(currentUser.uid)
         } else {
-            localRepository.getLastSession()?.let { session ->
-                _authState.value = AuthState(
-                    isLoggedIn = true,
-                    user = Officer(
-                        uid = session.uid,
-                        email = session.email,
-                        name = session.name,
-                        badgeNumber = session.badgeNumber,
-                        phone = session.phone,
-                        station = session.station,
-                        rank = session.rank
-                    ),
-                    successMessage = "Restored local session"
-                )
-            } ?: run {
-                _authState.value = AuthState(isLoggedIn = false)
-            }
+            _authState.value = AuthState(isLoggedIn = false)
         }
     }
 
@@ -77,7 +56,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = auth.createUserWithEmailAndPassword(email, password).tasksAwait()
                 val uid = result.user?.uid ?: throw Exception("User creation failed")
-                result.user?.let { persistSessionToken(it) }
 
                 val officer = Officer(
                     uid = uid,
@@ -98,10 +76,16 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                     .onFailure { e ->
-                        fallbackLocalSignup(email, password, name, badgeNumber, phone, station, rank, e)
+                        _authState.value = _authState.value.copy(
+                            isLoading = false,
+                            error = e.message ?: "Failed to create profile"
+                        )
                     }
             } catch (e: Exception) {
-                fallbackLocalSignup(email, password, name, badgeNumber, phone, station, rank, e)
+                _authState.value = _authState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Signup failed"
+                )
             }
         }
     }
@@ -121,25 +105,44 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = auth.signInWithEmailAndPassword(cleanEmail, cleanPassword).tasksAwait()
                 val uid = result.user?.uid ?: throw Exception("Login failed")
-                result.user?.let { persistSessionToken(it) }
                 loadUserProfile(uid)
             } catch (e: Exception) {
-                fallbackLocalLogin(cleanEmail, cleanPassword, e)
+                _authState.value = _authState.value.copy(
+                    isLoading = false,
+                    error = e.message ?: "Login failed"
+                )
             }
         }
     }
 
     private fun loadUserProfile(uid: String) {
+        _authState.value = _authState.value.copy(
+            isLoading = true,
+            error = null
+        )
+
         viewModelScope.launch {
             repository.getOfficerProfile(uid)
                 .onSuccess { officer ->
-                    _authState.value = AuthState(
-                        isLoggedIn = true,
-                        user = officer
-                    )
+                    if (officer != null) {
+                        _authState.value = AuthState(
+                            isLoggedIn = true,
+                            user = officer,
+                            isLoading = false
+                        )
+                    } else {
+                        _authState.value = AuthState(
+                            isLoading = false,
+                            isLoggedIn = false,
+                            error = "Officer profile not found in Firestore"
+                        )
+                        auth.signOut()
+                    }
                 }
                 .onFailure { e ->
-                    _authState.value = _authState.value.copy(
+                    _authState.value = AuthState(
+                        isLoading = false,
+                        isLoggedIn = false,
                         error = e.message ?: "Failed to load profile"
                     )
                 }
@@ -148,8 +151,6 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() {
         auth.signOut()
-        localRepository.logout()
-        tokenStore.clearToken()
         _authState.value = AuthState(isLoggedIn = false)
     }
 
@@ -177,86 +178,5 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             }
             else -> true
         }
-    }
-
-    private fun refreshSession(user: FirebaseUser) {
-        viewModelScope.launch {
-            try {
-                persistSessionToken(user)
-                loadUserProfile(user.uid)
-            } catch (e: Exception) {
-                _authState.value = _authState.value.copy(
-                    isLoading = false,
-                    error = e.message ?: "Failed to restore session"
-                )
-            }
-        }
-    }
-
-    private suspend fun persistSessionToken(user: FirebaseUser) {
-        val token = user.getIdToken(true).tasksAwait().token
-        if (!token.isNullOrBlank()) {
-            tokenStore.saveToken(token)
-        }
-    }
-
-    private fun fallbackLocalSignup(
-        email: String,
-        password: String,
-        name: String,
-        badgeNumber: String,
-        phone: String,
-        station: String,
-        rank: String,
-        cause: Throwable
-    ) {
-        localRepository.signup(email, password, name, badgeNumber, phone, station, rank)
-            .onSuccess { session ->
-                tokenStore.saveToken("local-${session.uid}-${System.currentTimeMillis()}")
-                _authState.value = AuthState(
-                    isLoggedIn = true,
-                    user = Officer(
-                        uid = session.uid,
-                        email = session.email,
-                        name = session.name,
-                        badgeNumber = session.badgeNumber,
-                        phone = session.phone,
-                        station = session.station,
-                        rank = session.rank
-                    ),
-                    successMessage = "Account created locally"
-                )
-            }
-            .onFailure {
-                _authState.value = _authState.value.copy(
-                    isLoading = false,
-                    error = cause.message ?: it.message ?: "Signup failed"
-                )
-            }
-    }
-
-    private fun fallbackLocalLogin(email: String, password: String, cause: Throwable) {
-        localRepository.login(email, password)
-            .onSuccess { session ->
-                tokenStore.saveToken("local-${session.uid}-${System.currentTimeMillis()}")
-                _authState.value = AuthState(
-                    isLoggedIn = true,
-                    user = Officer(
-                        uid = session.uid,
-                        email = session.email,
-                        name = session.name,
-                        badgeNumber = session.badgeNumber,
-                        phone = session.phone,
-                        station = session.station,
-                        rank = session.rank
-                    )
-                )
-            }
-            .onFailure {
-                _authState.value = _authState.value.copy(
-                    isLoading = false,
-                    error = cause.message ?: it.message ?: "Login failed"
-                )
-            }
     }
 }

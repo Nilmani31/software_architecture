@@ -3,15 +3,13 @@ package com.example.trafficfinecollectionsystem.utils
 import android.content.Context
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.firestore
+import com.google.firebase.initialize
 
 object FirebaseUtils {
     fun initializeFirebase(context: Context) {
         try {
-            if (FirebaseApp.getApps(context).isEmpty()) {
-                FirebaseApp.initializeApp(context)
-            }
+            Firebase.initialize(context)
         } catch (e: Exception) {
             e.printStackTrace()
         }
