@@ -9,14 +9,34 @@ const Officer = require("../models/Officer");
  */
 exports.getDashboard = async (req, res, next) => {
   try {
-    const [totalFines, paidFines, unpaidFines, totalPayments] = await Promise.all([
+    const [totalFines, paidFines, unpaidFines, totalPayments, topDistrictData] = await Promise.all([
       Fine.countDocuments(),
       Fine.countDocuments({ isPaid: true }),
       Fine.countDocuments({ isPaid: false }),
       Payment.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
+      Payment.aggregate([
+        {
+          $lookup: {
+            from: "fines",
+            localField: "fineId",
+            foreignField: "_id",
+            as: "fine",
+          },
+        },
+        { $unwind: "$fine" },
+        {
+          $group: {
+            _id: "$fine.district",
+            totalCollected: { $sum: "$amount" },
+          },
+        },
+        { $sort: { totalCollected: -1 } },
+        { $limit: 1 },
+      ]),
     ]);
 
     const totalRevenue = totalPayments[0]?.total || 0;
+    const topDistrict = topDistrictData[0]?._id || "-";
 
     res.json({
       summary: {
@@ -25,6 +45,7 @@ exports.getDashboard = async (req, res, next) => {
         unpaidFines,
         collectionRate: totalFines > 0 ? ((paidFines / totalFines) * 100).toFixed(2) : 0,
         totalRevenue,
+        topDistrict,
       },
     });
   } catch (err) {
