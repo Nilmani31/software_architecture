@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "923593400152",
+    "project_id": "traffic-fine-collection-d5f34",
+    "storage_bucket": "traffic-fine-collection-d5f34.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:923593400152:android:de82f7899178412c494f2d",
+        "android_client_info": {
+          "package_name": "com.example.trafficfinecollectionsystem"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrlOg8C5x4GobBZnq9_t1sBLERLPwrd-k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
