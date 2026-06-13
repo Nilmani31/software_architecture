@@ -64,13 +64,25 @@ fun SignupScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Header
-            Text(
-                "Create Officer Account",
-                style = MaterialTheme.typography.headlineSmall,
-                color = Color.White,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text(
+                        "Create Officer Account",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    Text(
+                        "Secure registration for traffic officers",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+            }
 
             // Name
             OutlinedTextField(

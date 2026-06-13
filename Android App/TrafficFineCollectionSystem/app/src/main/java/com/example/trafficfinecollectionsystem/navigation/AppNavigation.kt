@@ -15,6 +15,9 @@ fun AppNavigation(navController: NavHostController) {
                     navController.navigate(Screen.DashboardScreen.route) {
                         popUpTo(Screen.LoginScreen.route) { inclusive = true }
                     }
+                },
+                onNavigateToSignup = {
+                    navController.navigate(Screen.SignupScreen.route)
                 }
             )
         }
