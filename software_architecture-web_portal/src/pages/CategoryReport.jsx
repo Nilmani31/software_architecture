@@ -31,12 +31,12 @@ function CategoryReport() {
               <div style={styles.icon}>🚦</div>
 
               <div>
-                <h3 style={styles.category}>{c.type}</h3>
+                <h3 style={styles.category}>{c.name || c.categoryName}</h3>
                 <p style={styles.text}>
-                  {c.count} fines
+                  {c.fineCount || c.count || c.paymentCount} fines
                 </p>
                 <p style={styles.amount}>
-                  Rs. {Number(c.amount).toLocaleString()}
+                  Rs. {Number(c.totalCollected || c.amount).toLocaleString()}
                 </p>
               </div>
             </div>

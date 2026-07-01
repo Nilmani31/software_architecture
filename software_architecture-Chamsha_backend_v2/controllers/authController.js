@@ -16,18 +16,41 @@ const generateToken = (id, role) => {
  */
 exports.registerOfficer = async (req, res, next) => {
   try {
-    const { name, badgeNumber, email, password, phone, district } = req.body;
+    const {
+      fullName,
+      badgeId,
+      email,
+      password,
+      phone,
+      district,
+    } = req.body;
+
+    // map frontend → backend fields
+    const name = fullName;
+    const badgeNumber = badgeId;
 
     if (!name || !badgeNumber || !email || !password || !phone || !district) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "All required fields missing" });
     }
 
-    const existing = await Officer.findOne({ $or: [{ email }, { badgeNumber }] });
+    const existing = await Officer.findOne({
+      $or: [{ email }, { badgeNumber }],
+    });
+
     if (existing) {
-      return res.status(400).json({ message: "Officer with this email or badge number already exists" });
+      return res.status(400).json({
+        message: "Officer already exists (email or badge number)",
+      });
     }
 
-    const officer = await Officer.create({ name, badgeNumber, email, password, phone, district });
+    const officer = await Officer.create({
+      name,
+      badgeNumber,
+      email,
+      password,
+      phone,
+      district,
+    });
 
     res.status(201).json({
       message: "Officer registered successfully",
@@ -43,7 +66,6 @@ exports.registerOfficer = async (req, res, next) => {
     next(err);
   }
 };
-
 /**
  * POST /api/auth/officer/login
  */
@@ -52,19 +74,34 @@ exports.loginOfficer = async (req, res, next) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
+      return res.status(400).json({
+        message: "Email and password are required",
+      });
     }
 
     const officer = await Officer.findOne({ email });
-    if (!officer || !(await officer.comparePassword(password))) {
-      return res.status(401).json({ message: "Invalid credentials" });
+
+    if (!officer) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
+    }
+
+    const isMatch = await officer.comparePassword(password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid credentials",
+      });
     }
 
     if (!officer.isActive) {
-      return res.status(403).json({ message: "Account is deactivated" });
+      return res.status(403).json({
+        message: "Account is deactivated",
+      });
     }
 
-    const token = generateToken(officer._id, "OFFICER");
+    const token = generateToken(officer._id, officer.role);
 
     res.json({
       message: "Login successful",
@@ -74,15 +111,15 @@ exports.loginOfficer = async (req, res, next) => {
         name: officer.name,
         badgeNumber: officer.badgeNumber,
         email: officer.email,
+        phone: officer.phone,
         district: officer.district,
-        role: "OFFICER",
+        role: officer.role,
       },
     });
   } catch (err) {
     next(err);
   }
 };
-
 // ─── ADMIN AUTH ───────────────────────────────────────────────
 
 /**

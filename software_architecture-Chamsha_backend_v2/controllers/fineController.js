@@ -5,7 +5,7 @@ const FineCategory = require("../models/FineCategory");
 
 /**
  * GET /api/fines/lookup?ref=TF-XXX&categoryCode=OVS
- * Public endpoint - look up a fine by reference number + category code
+ * Public endpoint - look up a fine by reference number + optional category code
  * Used by both mobile app and web portal to fetch fine before payment
  */
 exports.lookupFine = async (req, res, next) => {
@@ -18,15 +18,13 @@ exports.lookupFine = async (req, res, next) => {
 
     const query = { referenceNumber: ref.toUpperCase() };
 
-    // If categoryCode provided, validate it matches
+    // If categoryCode provided, validate it exists but don't require match
+    let category = null;
     if (categoryCode) {
-      const category = await FineCategory.findOne({
+      category = await FineCategory.findOne({
         categoryCode: categoryCode.toUpperCase(),
       });
-      if (!category) {
-        return res.status(404).json({ message: "Fine category not found" });
-      }
-      query.categoryId = category._id;
+      // Don't fail if category not found - just proceed without category filter
     }
 
     const fine = await Fine.findOne(query)

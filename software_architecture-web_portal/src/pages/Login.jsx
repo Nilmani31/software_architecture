@@ -3,14 +3,14 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
 function Login() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
   const handleLogin = async () => {
     try {
-      const res = await api.post("/auth/login", {
-        username,
+      const res = await api.post("/auth/admin/login", {
+        email,
         password,
       });
 
@@ -55,9 +55,9 @@ function Login() {
 
           <input
             style={styles.input}
-            type="text"
-            placeholder="Username"
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            placeholder="Email"
+            onChange={(e) => setEmail(e.target.value)}
           />
 
           <input

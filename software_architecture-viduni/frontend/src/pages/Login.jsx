@@ -3,21 +3,21 @@ import { useNavigate } from "react-router-dom";
 import api from "../services/api";
 
 function Login() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
   const handleLogin = async () => {
     try {
-      const res = await api.post("/auth/login", {
-        username,
+      const res = await api.post("/auth/admin/login", {
+        email,
         password,
       });
 
       localStorage.setItem("token", res.data.token);
       navigate("/admin/dashboard");
     } catch (err) {
-      alert("Invalid Username or Password");
+      alert("Invalid Email or Password");
     }
   };
 
@@ -56,8 +56,8 @@ function Login() {
           <input
             style={styles.input}
             type="text"
-            placeholder="Username"
-            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Email"
+            onChange={(e) => setEmail(e.target.value)}
           />
 
           <input

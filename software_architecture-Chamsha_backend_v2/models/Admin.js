@@ -37,15 +37,18 @@ const adminSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
-adminSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+adminSchema.pre("save", function (next) {
+  if (this.isModified("password")) {
+    bcrypt.hash(this.password, 12).then((hashed) => {
+      this.password = hashed;
+      next();
+    }).catch((err) => next(err));
+  } else {
+    next();
+  }
 });
 
-// Compare password
-adminSchema.methods.comparePassword = async function (candidatePassword) {
+adminSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 

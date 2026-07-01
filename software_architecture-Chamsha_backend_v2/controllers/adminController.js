@@ -3,6 +3,66 @@ const Payment = require("../models/Payment");
 const FineCategory = require("../models/FineCategory");
 const Officer = require("../models/Officer");
 
+exports.registerOfficer = async (req, res, next) => {
+  try {
+    const {
+      fullName,
+      badgeId,
+      email,
+      password,
+      phone,
+      district,
+      status,
+      rank,
+      station,
+      division,
+    } = req.body;
+
+    const name = fullName;
+    const badgeNumber = badgeId;
+    const isActive = status !== "Inactive" && status !== "Suspended" && status !== "Retired";
+
+    if (!name || !badgeNumber || !email || !password || !phone || !district) {
+      return res.status(400).json({ message: "All required fields missing" });
+    }
+
+    const existing = await Officer.findOne({
+      $or: [{ email }, { badgeNumber }],
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message: "Officer already exists (email or badge number)",
+      });
+    }
+
+    const officer = await Officer.create({
+      name,
+      badgeNumber,
+      email,
+      password,
+      phone,
+      district,
+      isActive,
+    });
+
+    res.status(201).json({
+      message: "Officer registered successfully",
+      officer: {
+        id: officer._id,
+        name: officer.name,
+        badgeNumber: officer.badgeNumber,
+        email: officer.email,
+        district: officer.district,
+        phone: officer.phone,
+        status: officer.isActive ? "Active" : "Inactive",
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 /**
  * GET /api/admin/dashboard
  * Overall summary stats
@@ -23,7 +83,8 @@ exports.getDashboard = async (req, res, next) => {
             as: "fine",
           },
         },
-        { $unwind: "$fine" },
+        { $unwind: { path: "$fine", preserveNullAndEmptyArrays: true } },
+        { $match: { "fine.district": { $ne: null, $exists: true } } },
         {
           $group: {
             _id: "$fine.district",
@@ -68,7 +129,10 @@ exports.getDistrictAnalytics = async (req, res, next) => {
           as: "fine",
         },
       },
-      { $unwind: "$fine" },
+      { $unwind: { path: "$fine", preserveNullAndEmptyArrays: true } },
+      {
+        $match: { "fine.district": { $ne: null, $exists: true } },
+      },
       {
         $group: {
           _id: "$fine.district",
@@ -79,8 +143,10 @@ exports.getDistrictAnalytics = async (req, res, next) => {
       { $sort: { totalCollected: -1 } },
     ]);
 
-    // Issued (not just paid) per district
     const issuedPerDistrict = await Fine.aggregate([
+      {
+        $match: { district: { $ne: null, $exists: true } },
+      },
       {
         $group: {
           _id: "$district",
@@ -90,7 +156,6 @@ exports.getDistrictAnalytics = async (req, res, next) => {
       },
     ]);
 
-    // Merge
     const districtMap = {};
     issuedPerDistrict.forEach((d) => {
       districtMap[d._id] = { totalIssued: d.totalIssued, totalPaid: d.totalPaid, totalCollected: 0, paymentCount: 0 };
@@ -117,11 +182,13 @@ exports.getDistrictAnalytics = async (req, res, next) => {
 
 /**
  * GET /api/admin/analytics/category
- * Breakdown by fine category
+ * Breakdown by fine category (both issued fines and payments)
  */
 exports.getCategoryAnalytics = async (req, res, next) => {
   try {
-    const categoryStats = await Payment.aggregate([
+    const allCategories = await FineCategory.find({ isActive: true }).select("_id name categoryCode amount");
+
+    const paymentStats = await Payment.aggregate([
       {
         $lookup: {
           from: "fines",
@@ -130,7 +197,7 @@ exports.getCategoryAnalytics = async (req, res, next) => {
           as: "fine",
         },
       },
-      { $unwind: "$fine" },
+      { $unwind: { path: "$fine", preserveNullAndEmptyArrays: true } },
       {
         $lookup: {
           from: "finecategories",
@@ -139,7 +206,7 @@ exports.getCategoryAnalytics = async (req, res, next) => {
           as: "category",
         },
       },
-      { $unwind: "$category" },
+      { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: "$category._id",
@@ -150,10 +217,60 @@ exports.getCategoryAnalytics = async (req, res, next) => {
           paymentCount: { $sum: 1 },
         },
       },
-      { $sort: { totalCollected: -1 } },
     ]);
 
-    res.json({ categoryAnalytics: categoryStats });
+    const issuedStats = await Fine.aggregate([
+      { $match: { categoryId: { $ne: null } } },
+      {
+        $group: {
+          _id: "$categoryId",
+          fineCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const categoryMap = {};
+    allCategories.forEach((cat) => {
+      if (!cat._id) return;
+      categoryMap[cat._id.toString()] = {
+        _id: cat._id,
+        categoryName: cat.name,
+        categoryCode: cat.categoryCode,
+        fineAmount: cat.amount,
+        totalCollected: 0,
+        paymentCount: 0,
+        fineCount: 0,
+      };
+    });
+
+    paymentStats.forEach((s) => {
+      if (!s._id) return;
+      if (categoryMap[s._id.toString()]) {
+        categoryMap[s._id.toString()].totalCollected = s.totalCollected;
+        categoryMap[s._id.toString()].paymentCount = s.paymentCount;
+      }
+    });
+
+    issuedStats.forEach((s) => {
+      if (!s._id) return;
+      if (categoryMap[s._id.toString()]) {
+        categoryMap[s._id.toString()].fineCount = s.fineCount;
+      } else if (s._id) {
+        categoryMap[s._id.toString()] = {
+          _id: s._id,
+          categoryName: "Unknown",
+          categoryCode: "UNK",
+          fineAmount: 0,
+          totalCollected: 0,
+          paymentCount: 0,
+          fineCount: s.fineCount,
+        };
+      }
+    });
+
+    const result = Object.values(categoryMap).sort((a, b) => b.totalCollected - a.totalCollected);
+
+    res.json({ categoryAnalytics: result });
   } catch (err) {
     next(err);
   }
@@ -187,7 +304,6 @@ exports.getMonthlyAnalytics = async (req, res, next) => {
       { $sort: { _id: 1 } },
     ]);
 
-    // Fill all 12 months
     const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const result = monthNames.map((name, i) => {
       const found = monthly.find((m) => m._id === i + 1);
@@ -200,6 +316,89 @@ exports.getMonthlyAnalytics = async (req, res, next) => {
     });
 
     res.json({ year, monthlyAnalytics: result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/admin/district-report
+ * District-wise report for frontend PaymentLogs pages
+ */
+exports.districtReport = async (req, res, next) => {
+  try {
+    const result = await Fine.aggregate([
+      { $match: { district: { $ne: null, $exists: true } } },
+      {
+        $lookup: {
+          from: "finecategories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $unwind: { path: "$category", preserveNullAndEmptyArrays: true },
+      },
+        {
+          $group: {
+            _id: "$district",
+            count: { $sum: 1 },
+            amount: { $sum: { $ifNull: ["$category.amount", 0] } },
+          },
+        },
+      { $sort: { amount: -1 } },
+    ]);
+
+    const formatted = result.map((item) => ({
+      name: item._id || "Unknown",
+      count: item.count,
+      amount: item.amount || 0,
+    }));
+
+    res.json(formatted);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/admin/category-report
+ * Public category report for frontend
+ */
+exports.categoryReport = async (req, res, next) => {
+  try {
+    const result = await FineCategory.aggregate([
+      {
+        $lookup: {
+          from: "fines",
+          localField: "_id",
+          foreignField: "categoryId",
+          as: "fines",
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          categoryCode: 1,
+          amount: 1,
+          fineCount: { $size: "$fines" },
+        },
+      },
+      { $sort: { fineCount: -1 } },
+    ]);
+
+    const formatted = result.map((cat) => ({
+      _id: cat._id,
+      name: cat.name,
+      categoryCode: cat.categoryCode,
+      amount: cat.amount,
+      fineCount: cat.fineCount,
+      totalCollected: cat.fineCount * cat.amount,
+    }));
+
+    res.json(formatted);
   } catch (err) {
     next(err);
   }

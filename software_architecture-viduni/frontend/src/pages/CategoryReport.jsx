@@ -33,10 +33,10 @@ function CategoryReport() {
               <div>
                 <h3 style={styles.category}>{c.categoryName} ({c.categoryCode})</h3>
                 <p style={styles.text}>
-                  {c.paymentCount} fines
+                  {c.fineCount || c.paymentCount || c.count} fines
                 </p>
                 <p style={styles.amount}>
-                  Rs. {Number(c.totalCollected).toLocaleString()}
+                  Rs. {Number(c.totalCollected || c.amount).toLocaleString()}
                 </p>
               </div>
             </div>

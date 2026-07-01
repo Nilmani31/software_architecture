@@ -5,41 +5,48 @@ const officerSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, "Name is required"],
+      required: true,
       trim: true,
     },
+
     badgeNumber: {
       type: String,
-      required: [true, "Badge number is required"],
+      required: true,
       unique: true,
       trim: true,
     },
+
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: true,
       unique: true,
       lowercase: true,
       trim: true,
     },
+
     password: {
       type: String,
-      required: [true, "Password is required"],
+      required: true,
       minlength: 6,
     },
+
     phone: {
       type: String,
-      required: [true, "Phone number is required"],
+      required: true,
       trim: true,
     },
+
     district: {
       type: String,
-      required: [true, "District is required"],
+      required: true,
       trim: true,
     },
+
     role: {
       type: String,
       default: "OFFICER",
     },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -48,16 +55,19 @@ const officerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
-officerSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+officerSchema.pre("save", function (next) {
+  if (this.isModified("password")) {
+    bcrypt.hash(this.password, 12).then((hashed) => {
+      this.password = hashed;
+      next();
+    }).catch((err) => next(err));
+  } else {
+    next();
+  }
 });
 
-// Compare password
-officerSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+officerSchema.methods.comparePassword = function (password) {
+  return bcrypt.compare(password, this.password);
 };
 
 module.exports = mongoose.model("Officer", officerSchema);

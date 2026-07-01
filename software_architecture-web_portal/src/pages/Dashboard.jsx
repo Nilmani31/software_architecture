@@ -10,7 +10,7 @@ function Dashboard() {
 
   useEffect(() => {
     api.get("/admin/dashboard").then((res) => {
-      setData(res.data || {});
+      setData(res.data.summary || {});
     });
   }, []);
 
