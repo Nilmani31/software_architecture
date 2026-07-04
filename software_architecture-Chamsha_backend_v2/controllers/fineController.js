@@ -1,7 +1,4 @@
-const Fine = require("../models/Fine");
-const Vehicle = require("../models/Vehicle");
-const Driver = require("../models/Driver");
-const FineCategory = require("../models/FineCategory");
+const fineService = require("../services/fineService");
 
 /**
  * GET /api/fines/lookup?ref=TF-XXX&categoryCode=OVS
@@ -11,31 +8,7 @@ const FineCategory = require("../models/FineCategory");
 exports.lookupFine = async (req, res, next) => {
   try {
     const { ref, categoryCode } = req.query;
-
-    if (!ref) {
-      return res.status(400).json({ message: "Reference number is required" });
-    }
-
-    const query = { referenceNumber: ref.toUpperCase() };
-
-    // If categoryCode provided, validate it exists but don't require match
-    let category = null;
-    if (categoryCode) {
-      category = await FineCategory.findOne({
-        categoryCode: categoryCode.toUpperCase(),
-      });
-      // Don't fail if category not found - just proceed without category filter
-    }
-
-    const fine = await Fine.findOne(query)
-      .populate("categoryId", "name categoryCode amount")
-      .populate("vehicleId", "plateNumber vehicleType")
-      .populate("driverId", "name licenseNumber")
-      .populate("officerId", "name badgeNumber district");
-
-    if (!fine) {
-      return res.status(404).json({ message: "Fine not found" });
-    }
+    const fine = await fineService.lookupFine(ref, categoryCode);
 
     res.json({
       fine: {
@@ -64,15 +37,7 @@ exports.lookupFine = async (req, res, next) => {
  */
 exports.getFineByRef = async (req, res, next) => {
   try {
-    const fine = await Fine.findOne({
-      referenceNumber: req.params.referenceNumber.toUpperCase(),
-    })
-      .populate("categoryId", "name categoryCode amount")
-      .populate("vehicleId", "plateNumber vehicleType")
-      .populate("driverId", "name licenseNumber")
-      .populate("officerId", "name badgeNumber district phone");
-
-    if (!fine) return res.status(404).json({ message: "Fine not found" });
+    const fine = await fineService.getFineByReference(req.params.referenceNumber);
 
     res.json({ fine });
   } catch (err) {
@@ -86,65 +51,7 @@ exports.getFineByRef = async (req, res, next) => {
  */
 exports.issueFine = async (req, res, next) => {
   try {
-    const {
-      plateNumber,
-      vehicleType,
-      driverName,
-      licenseNumber,
-      driverPhone,
-      categoryId,
-      location,
-      district,
-      description,
-    } = req.body;
-
-    if (!plateNumber || !licenseNumber || !driverName || !categoryId) {
-      return res.status(400).json({
-        message: "plateNumber, licenseNumber, driverName, and categoryId are required",
-      });
-    }
-
-    // Verify category exists
-    const category = await FineCategory.findById(categoryId);
-    if (!category || !category.isActive) {
-      return res.status(404).json({ message: "Fine category not found" });
-    }
-
-    // Find or create driver
-    let driver = await Driver.findOne({ licenseNumber: licenseNumber.toUpperCase() });
-    if (!driver) {
-      driver = await Driver.create({
-        name: driverName,
-        licenseNumber: licenseNumber.toUpperCase(),
-        phone: driverPhone,
-      });
-    }
-
-    // Find or create vehicle
-    let vehicle = await Vehicle.findOne({ plateNumber: plateNumber.toUpperCase() });
-    if (!vehicle) {
-      vehicle = await Vehicle.create({
-        plateNumber: plateNumber.toUpperCase(),
-        vehicleType: vehicleType || "CAR",
-        driverId: driver._id,
-      });
-    }
-
-    const fine = await Fine.create({
-      vehicleId: vehicle._id,
-      driverId: driver._id,
-      categoryId,
-      officerId: req.user.id,
-      location,
-      district: district || (await require("../models/Officer").findById(req.user.id))?.district,
-      description,
-    });
-
-    await fine.populate([
-      { path: "categoryId", select: "name categoryCode amount" },
-      { path: "vehicleId", select: "plateNumber vehicleType" },
-      { path: "driverId", select: "name licenseNumber" },
-    ]);
+    const fine = await fineService.issueFine(req.body, req.user.id);
 
     res.status(201).json({
       message: "Fine issued successfully",
@@ -171,37 +78,8 @@ exports.issueFine = async (req, res, next) => {
  */
 exports.getFines = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20, isPaid, district, from, to } = req.query;
-    const query = {};
-
-    if (req.user.role === "OFFICER") {
-      query.officerId = req.user.id;
-    }
-
-    if (isPaid !== undefined) query.isPaid = isPaid === "true";
-    if (district) query.district = { $regex: district, $options: "i" };
-    if (from || to) {
-      query.issuedDate = {};
-      if (from) query.issuedDate.$gte = new Date(from);
-      if (to) query.issuedDate.$lte = new Date(to);
-    }
-
-    const total = await Fine.countDocuments(query);
-    const fines = await Fine.find(query)
-      .populate("categoryId", "name categoryCode amount")
-      .populate("vehicleId", "plateNumber vehicleType")
-      .populate("driverId", "name licenseNumber")
-      .populate("officerId", "name badgeNumber district")
-      .sort({ issuedDate: -1 })
-      .skip((page - 1) * limit)
-      .limit(Number(limit));
-
-    res.json({
-      total,
-      page: Number(page),
-      pages: Math.ceil(total / limit),
-      fines,
-    });
+    const result = await fineService.getFines(req.query, req.user);
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -213,18 +91,7 @@ exports.getFines = async (req, res, next) => {
  */
 exports.getFineById = async (req, res, next) => {
   try {
-    const fine = await Fine.findById(req.params.id)
-      .populate("categoryId", "name categoryCode amount")
-      .populate("vehicleId", "plateNumber vehicleType")
-      .populate("driverId", "name licenseNumber phone")
-      .populate("officerId", "name badgeNumber district phone");
-
-    if (!fine) return res.status(404).json({ message: "Fine not found" });
-
-    // Officers can only see their own fines
-    if (req.user.role === "OFFICER" && String(fine.officerId._id) !== req.user.id) {
-      return res.status(403).json({ message: "Access denied" });
-    }
+    const fine = await fineService.getFineById(req.params.id, req.user);
 
     res.json({ fine });
   } catch (err) {

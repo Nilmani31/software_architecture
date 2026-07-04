@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const bcrypt = require("bcryptjs");
+const config = require("./appConfig");
 const Admin = require("../models/Admin");
 const Officer = require("../models/Officer");
 const FineCategory = require("../models/FineCategory");
@@ -56,7 +57,7 @@ const seedData = async () => {
 
 const connectDB = async () => {
   try {
-    let mongoUri = process.env.MONGO_URI;
+    let mongoUri = config.mongoUri;
     let isMemory = false;
 
     // Use memory server if no URI provided or if it's the example URI

@@ -4,8 +4,10 @@
  * Set SMS_MOCK=true in .env to use mock mode.
  */
 
+const config = require("../config/appConfig");
+
 const sendSMS = async (toPhone, message) => {
-  if (process.env.SMS_MOCK === "true") {
+  if (config.smsMock) {
     // Mock mode: just log to console
     console.log(`\n📱 [SMS MOCK] To: ${toPhone}`);
     console.log(`   Message: ${message}`);
@@ -16,14 +18,11 @@ const sendSMS = async (toPhone, message) => {
   // Real Twilio integration
   try {
     const twilio = require("twilio");
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
+    const client = twilio(config.twilioAccountSid, config.twilioAuthToken);
 
     const msg = await client.messages.create({
       body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: config.twilioPhoneNumber,
       to: toPhone,
     });
 

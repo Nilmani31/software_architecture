@@ -1,10 +1,11 @@
 const jwt = require("jsonwebtoken");
 const Officer = require("../models/Officer");
 const Admin = require("../models/Admin");
+const config = require("../config/appConfig");
 
 const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+  return jwt.sign({ id, role }, config.jwtSecret, {
+    expiresIn: config.jwtExpiresIn,
   });
 };
 
